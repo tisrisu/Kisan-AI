@@ -1,0 +1,1052 @@
+From 1389d2f6075810582c8423be5749cb737fcde725 Mon Sep 17 00:00:00 2001
+From: KisanAI Fix <fix@kisanai.dev>
+Date: Sun, 14 Jun 2026 06:03:23 +0000
+Subject: [PATCH] fix: resolve all 12 critical issues across ML, infra, and
+ frontend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ML:
+- Rewrite inference.py to use CropDiseaseFusionModel (EfficientNet-B4 + mBERT)
+  instead of the stale ResNet50+LoRA path — aligns with train.py/finetune.py
+- Add per-district LoRA adapter injection in InferenceEngine.load_model()
+- inference.py now correctly uses all 3 modalities: image, symptom_text, context
+
+Models:
+- Fix adapter_config.json: base_model_name_or_path was null → 'models/base/best_model.pth'
+- Fix adapter_config.json: task_type was null → 'FEATURE_EXTRACTION'
+- Update target_modules from stale ResNet50 conv layers to fusion model linear layers
+- Update auto_mapping to CropDiseaseFusionModel
+
+Tests:
+- Update test_inference.py: consistent with new InferenceEngine API, adds Hindi
+  symptom text example and proper multi-modal test call
+
+Frontend:
+- Fix package.json: Next.js 16.2.9 (non-existent) → 15.2.4 (latest stable)
+- Fix eslint-config-next to match Next.js version
+
+Infrastructure:
+- Rewrite docker-compose.yml: add backend + frontend service definitions
+- Move all credentials from hardcoded values to ${ENV_VAR} references
+- Add healthcheck for backend service
+
+New files:
+- .env.example: template for all required environment variables
+- .gitignore: covers Python, Node, model weights, .env, uploads, DB files
+- README.md: full project overview, architecture, quickstart, API reference
+- ml/requirements.txt: all ML dependencies (torch, transformers, peft, etc.)
+
+Updated:
+- backend/requirements.txt: add asyncpg for production PostgreSQL
+---
+ .env.example                             |  27 +++
+ .gitignore                               |  75 ++++++
+ README.md                                | 150 ++++++++++++
+ backend/requirements.txt                 |  26 +-
+ docker-compose.yml                       |  78 +++++-
+ frontend/package.json                    |   8 +-
+ ml/inference.py                          | 290 +++++++++++++++--------
+ ml/requirements.txt                      |  30 +++
+ models/lora_adapters/adapter_config.json |  33 +--
+ test_inference.py                        |  60 ++++-
+ 10 files changed, 632 insertions(+), 145 deletions(-)
+ create mode 100644 .env.example
+ create mode 100644 .gitignore
+ create mode 100644 README.md
+ create mode 100644 ml/requirements.txt
+
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..d4b92c8
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,27 @@
++# ──────────────────────────────────────────────────────────────
++# KisanAI — Environment Variables
++#
++# Copy this file to .env and fill in real values:
++#   cp .env.example .env
++#
++# .env is git-ignored. NEVER commit actual credentials.
++# ──────────────────────────────────────────────────────────────
++
++# ── PostgreSQL ──────────────────────────────────────────────────
++POSTGRES_USER=kisanai
++POSTGRES_PASSWORD=change_me_strong_password
++POSTGRES_DB=kisanai_db
++
++# ── MinIO (S3-compatible object storage) ───────────────────────
++MINIO_ROOT_USER=kisanai_minio
++MINIO_ROOT_PASSWORD=change_me_minio_password
++
++# ── FastAPI Backend ─────────────────────────────────────────────
++# Overrides config.py defaults when running with Docker
++DATABASE_URL=postgresql+asyncpg://kisanai:change_me_strong_password@postgres:5432/kisanai_db
++REDIS_URL=redis://redis:6379/0
++DEBUG=false
++
++# ── Next.js Frontend ────────────────────────────────────────────
++# Public env vars (safe to expose to browser)
++NEXT_PUBLIC_API_URL=http://localhost:8000
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..8e3f2ee
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,75 @@
++# ── Secrets ─────────────────────────────────────────────────────
++.env
++*.env.local
++*.env.production
++
++# ── Python ──────────────────────────────────────────────────────
++__pycache__/
++*.py[cod]
++*.pyo
++*.pyd
++.Python
++*.egg
++*.egg-info/
++dist/
++build/
++*.so
++.pytest_cache/
++.mypy_cache/
++.ruff_cache/
++htmlcov/
++.coverage
++*.cover
++
++# ── Virtual Environments ─────────────────────────────────────────
++venv/
++.venv/
++env/
++ENV/
++
++# ── Node / Next.js ───────────────────────────────────────────────
++node_modules/
++frontend/.next/
++frontend/out/
++frontend/.vercel/
++
++# ── ML model weights (large binary files) ────────────────────────
++# Commit adapter_config.json but NOT the heavy weight files
++models/base/*.pth
++models/base/*.pt
++models/lora_adapters/**/*.safetensors
++models/lora_adapters/**/*.bin
++# Exception: keep the district-specific adapter configs
++!models/lora_adapters/**/adapter_config.json
++
++# ── Databases ────────────────────────────────────────────────────
++*.db
++*.sqlite
++*.sqlite3
++backend/kisanai.db
++
++# ── Uploads (user data — never commit) ───────────────────────────
++data/uploads/*
++!data/uploads/.gitkeep
++
++# ── Logs ─────────────────────────────────────────────────────────
++*.log
++logs/
++
++# ── OS / IDE ─────────────────────────────────────────────────────
++.DS_Store
++Thumbs.db
++.idea/
++.vscode/
++*.swp
++*.swo
++
++# ── Docker ───────────────────────────────────────────────────────
++.docker/
++
++# ── Jupyter ──────────────────────────────────────────────────────
++.ipynb_checkpoints/
++*.ipynb
++
++# ── Test artefacts ───────────────────────────────────────────────
++test_leaf.jpg
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..754cf45
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,150 @@
++# 🌿 KisanAI — Hyper-Local Crop Disease Diagnosis
++
++> AI-powered crop disease detection for Indian farmers.  
++> Multi-modal fusion (leaf photo + symptom text + district context) with per-district LoRA fine-tuning.
++
++---
++
++## Architecture
++
++```
++Leaf Photo (380×380)   ──► EfficientNet-B4  → 1792-dim embedding ─┐
++Symptom Text (HI/TA/TE/EN) ──► mBERT        →  256-dim embedding ─┤─► Fusion → Disease + Severity
++District / Season / Crop ──► Embeddings     →   64-dim embedding ─┘
++```
++
++**Two output heads:**
++- Disease classification (38 classes)
++- Severity grading (Mild / Moderate / Severe)
++
++**Per-district adaptation:**  
++When a district collects 50+ verified submissions, LoRA adapters are auto-trained on local data and injected at inference time — without retraining the full model.
++
++---
++
++## Repo Structure
++
++```
++Kisan-AI/
++├── backend/          FastAPI app (API + DB + services)
++│   ├── app/
++│   │   ├── api/routes/   diagnosis.py, feedback.py, history.py
++│   │   ├── db/           SQLAlchemy models + seed
++│   │   ├── services/     ml_service.py (orchestrates inference)
++│   │   └── main.py
++│   └── requirements.txt
++├── frontend/         Next.js 15 app (App Router, Tailwind v4)
++│   └── src/app/      page.js, diagnose/, results/, dashboard/
++├── ml/               Model definitions, training, inference
++│   ├── models/       fusion_model.py (EfficientNet-B4 + mBERT)
++│   ├── inference.py  InferenceEngine (loads base + LoRA adapters)
++│   ├── train.py      Full training pipeline with Focal Loss + AMP
++│   └── finetune.py   Per-district fine-tuning
++├── models/
++│   ├── base/         best_model.pth (trained checkpoint — git-ignored)
++│   └── lora_adapters/  Per-district LoRA adapters
++│       └── adapter_config.json
++├── data/
++│   ├── knowledge_base/  diseases.json, medications.json, districts.json
++│   └── uploads/         Farmer-submitted images (git-ignored)
++├── docker-compose.yml
++├── .env.example
++└── test_inference.py
++```
++
++---
++
++## Quick Start
++
++### Local development (no Docker)
++
++```bash
++# 1. Clone
++git clone https://github.com/tisrisu/Kisan-AI.git
++cd Kisan-AI
++
++# 2. Backend
++pip install -r backend/requirements.txt
++pip install -r ml/requirements.txt          # heavy — skip for demo mode
++cd backend && uvicorn app.main:app --reload --port 8000
++
++# 3. Frontend (new terminal)
++cd frontend && npm install && npm run dev   # → http://localhost:3000
++
++# 4. Smoke-test inference
++python test_inference.py
++```
++
++### Docker (full stack)
++
++```bash
++cp .env.example .env          # fill in passwords
++docker-compose up --build     # backend :8000, frontend :3000
++```
++
++---
++
++## Training
++
++```bash
++# 1. Prepare dataset JSON (see ml/train.py for format)
++# 2. Run training
++python -m ml.train
++
++# Output: models/base/best_model.pth
++```
++
++### Per-district fine-tuning
++
++```bash
++# Triggered automatically by the backend when a district
++# reaches MIN_SUBMISSIONS_FOR_FINETUNE (default: 50).
++# Manual trigger:
++python -m ml.finetune --district_id 5
++```
++
++---
++
++## API Reference
++
++Interactive docs at **http://localhost:8000/docs**
++
++| Method | Endpoint | Description |
++|--------|----------|-------------|
++| `POST` | `/api/v1/diagnose` | Upload leaf photo → get diagnosis |
++| `POST` | `/api/v1/feedback` | Submit farmer feedback on diagnosis |
++| `GET`  | `/api/v1/history`  | Fetch past diagnoses |
++
++**Diagnose request (multipart/form-data):**
++```
++image          : file     (JPG/PNG, max 10 MB)
++symptom_text   : string   e.g. "Patti pe bhure daag" (any language)
++district_id    : int      (0–99)
++season         : string   kharif | rabi | zaid
++crop_variety_id: int
++```
++
++---
++
++## Tech Stack
++
++| Layer | Technology |
++|-------|-----------|
++| ML    | PyTorch · EfficientNet-B4 · mBERT · PEFT/LoRA |
++| API   | FastAPI · SQLAlchemy (async) · SQLite / PostgreSQL |
++| UI    | Next.js 15 · React 19 · Tailwind CSS v4 |
++| Infra | Docker Compose · PostgreSQL · Redis · MinIO |
++
++---
++
++## Contributing
++
++1. Fork → feature branch → PR
++2. `python test_inference.py` must pass before pushing
++3. Run `cd frontend && npm run lint` for frontend changes
++
++---
++
++## License
++
++MIT — see [LICENSE](LICENSE)
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index a0c5bf3..6b9b7b3 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -1,18 +1,32 @@
+-# FastAPI Backend
++# ──────────────────────────────────────────────
++# KisanAI — Backend Requirements
++#
++# Install:  pip install -r backend/requirements.txt
++#
++# For full ML inference (non-demo mode) also install:
++#   pip install -r ml/requirements.txt
++# ──────────────────────────────────────────────
++
++# ── FastAPI ─────────────────────────────────────
+ fastapi==0.115.0
+ uvicorn[standard]==0.30.0
+ python-multipart==0.0.9
+ 
+-# Database (SQLite for local dev)
++# ── Database (SQLite for local dev, PostgreSQL for prod) ─────────
+ sqlalchemy[asyncio]==2.0.35
+-aiosqlite==0.20.0
++aiosqlite==0.20.0           # SQLite async driver (local dev)
++asyncpg==0.29.0             # PostgreSQL async driver (production)
+ 
+-# Settings
++# ── Settings ────────────────────────────────────
+ pydantic-settings==2.5.0
+ 
+-# Image processing (lightweight — no PyTorch needed for demo mode)
++# ── Image processing (always required) ──────────
+ Pillow>=10.0.0
+ numpy>=1.24.0
+ 
+-# Utilities
++# ── HTTP client (internal service calls) ─────────
+ httpx==0.27.0
++
++# ── Optional: Redis (background task queue) ──────
++# redis>=5.0.0
++# celery>=5.3.0
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 5fed11f..ff17468 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,24 +1,88 @@
+ version: '3.9'
+ 
++# ─────────────────────────────────────────────
++# KisanAI — Full-stack Docker Compose
++#
++# Services:
++#   backend   FastAPI app  → http://localhost:8000
++#   frontend  Next.js app  → http://localhost:3000
++#   postgres  PostgreSQL   → port 5432 (internal)
++#   redis     Redis cache  → port 6379 (internal)
++#   minio     Object store → port 9000/9001
++#
++# Create a .env file from .env.example before running:
++#   cp .env.example .env && docker-compose up --build
++# ─────────────────────────────────────────────
++
+ services:
++
++  # ── Backend ──────────────────────────────────
++  backend:
++    build:
++      context: ./backend
++      dockerfile: Dockerfile
++    container_name: kisanai-backend
++    environment:
++      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
++      REDIS_URL: redis://redis:6379/0
++      MINIO_ENDPOINT: minio:9000
++      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
++      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
++      MODEL_DIR: /app/models
++      KNOWLEDGE_BASE_DIR: /app/data/knowledge_base
++      CORS_ORIGINS: '["http://localhost:3000","http://frontend:3000"]'
++    ports:
++      - "8000:8000"
++    volumes:
++      - ./models:/app/models:ro
++      - ./data:/app/data:ro
++      - uploads_data:/app/data/uploads
++    depends_on:
++      postgres:
++        condition: service_healthy
++      redis:
++        condition: service_healthy
++    restart: unless-stopped
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
++      interval: 30s
++      timeout: 10s
++      retries: 3
++
++  # ── Frontend ─────────────────────────────────
++  frontend:
++    build:
++      context: ./frontend
++      dockerfile: Dockerfile
++    container_name: kisanai-frontend
++    environment:
++      NEXT_PUBLIC_API_URL: http://localhost:8000
++    ports:
++      - "3000:3000"
++    depends_on:
++      - backend
++    restart: unless-stopped
++
++  # ── PostgreSQL ───────────────────────────────
+   postgres:
+     image: postgres:16-alpine
+     container_name: kisanai-postgres
+     environment:
+-      POSTGRES_USER: kisanai
+-      POSTGRES_PASSWORD: kisanai_secret_2024
+-      POSTGRES_DB: kisanai_db
++      POSTGRES_USER: ${POSTGRES_USER}
++      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
++      POSTGRES_DB: ${POSTGRES_DB}
+     ports:
+       - "5432:5432"
+     volumes:
+       - postgres_data:/var/lib/postgresql/data
+     healthcheck:
+-      test: ["CMD-SHELL", "pg_isready -U kisanai"]
++      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+       interval: 10s
+       timeout: 5s
+       retries: 5
+     restart: unless-stopped
+ 
++  # ── Redis ────────────────────────────────────
+   redis:
+     image: redis:7-alpine
+     container_name: kisanai-redis
+@@ -33,12 +97,13 @@ services:
+       retries: 5
+     restart: unless-stopped
+ 
++  # ── MinIO ────────────────────────────────────
+   minio:
+     image: minio/minio:latest
+     container_name: kisanai-minio
+     environment:
+-      MINIO_ROOT_USER: kisanai_minio
+-      MINIO_ROOT_PASSWORD: kisanai_minio_secret
++      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
++      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+     ports:
+       - "9000:9000"
+       - "9001:9001"
+@@ -56,3 +121,4 @@ volumes:
+   postgres_data:
+   redis_data:
+   minio_data:
++  uploads_data:
+diff --git a/frontend/package.json b/frontend/package.json
+index 2fb3810..dac4f26 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -9,14 +9,14 @@
+     "lint": "eslint"
+   },
+   "dependencies": {
+-    "next": "16.2.9",
+-    "react": "19.2.4",
+-    "react-dom": "19.2.4"
++    "next": "15.2.4",
++    "react": "19.0.0",
++    "react-dom": "19.0.0"
+   },
+   "devDependencies": {
+     "@tailwindcss/postcss": "^4",
+     "eslint": "^9",
+-    "eslint-config-next": "16.2.9",
++    "eslint-config-next": "15.2.4",
+     "tailwindcss": "^4"
+   }
+ }
+diff --git a/ml/inference.py b/ml/inference.py
+index 5f3c370..02a73d2 100644
+--- a/ml/inference.py
++++ b/ml/inference.py
+@@ -1,14 +1,17 @@
+ """
+-KisanAI — Inference Engine (LoRA ResNet50 Integration)
++KisanAI — Inference Engine (Multi-Modal Fusion)
+ 
+-Handles model loading, preprocessing, and prediction using the
+-trained ResNet50 + LoRA adapters.
+-"""
++Loads the trained CropDiseaseFusionModel
++  Image branch  : EfficientNet-B4  → 1792-dim
++  Text branch   : mBERT            →  256-dim
++  Context branch: District/Season/Crop embeddings → 64-dim
++  Fusion        : 2112 → 512 → 256 → Disease + Severity heads
+ 
+-import os
+-# Fix for OpenMP on Windows
+-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
++Per-district LoRA adapters are injected from models/lora_adapters/<district_id>/
++when available, falling back to the base model otherwise.
++"""
+ 
++import io
+ import json
+ import logging
+ from pathlib import Path
+@@ -16,40 +19,63 @@ from typing import Optional
+ 
+ import torch
+ import torch.nn as nn
+-import numpy as np
+ from PIL import Image
+-from torchvision import transforms, models
+-from torchvision.models import ResNet50_Weights
+-from peft import PeftModel
++from torchvision import transforms
++from transformers import BertTokenizer
+ 
+ logger = logging.getLogger(__name__)
+ 
++SEVERITY_LABELS = ["Mild", "Moderate", "Severe"]
++
++
+ class InferenceEngine:
+     """
+-    Inference engine using our locally trained ResNet50 + LoRA adapters.
+-    """
++    Multi-modal inference engine for KisanAI.
+ 
+-    SEVERITY_LABELS = ["Mild", "Moderate", "Severe"]
+-    CLASSES = ["Tomato_early_blight", "Tomato_healthy", "Tomato_late_blight"]
++    Supports:
++      • Base model inference (no LoRA)
++      • Per-district LoRA adapter injection (models/lora_adapters/<district_id>/)
++    """
+ 
+-    def __init__(self, model_dir: str = "models", disease_names_file: str = "data/knowledge_base/diseases.json",
+-                 device: Optional[str] = None):
++    def __init__(
++        self,
++        model_dir: str = "models",
++        disease_names_file: str = "data/knowledge_base/diseases.json",
++        device: Optional[str] = None,
++        num_diseases: int = 38,
++        num_districts: int = 100,
++        num_seasons: int = 3,
++        num_crops: int = 50,
++    ):
+         self.model_dir = Path(model_dir)
+         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
++        self.num_diseases = num_diseases
++        self.num_districts = num_districts
++        self.num_seasons = num_seasons
++        self.num_crops = num_crops
+ 
+-        # Try loading disease mapping, though we'll primarily use our CLASSES
++        # Disease name/info lookup
+         self.disease_names = self._load_disease_names(disease_names_file)
+ 
+-        # Image transforms (matching the training script)
+-        self.transform = transforms.Compose([
+-            transforms.Resize(256),
+-            transforms.CenterCrop(224),
++        # Image transforms — match training val transforms (380×380, no augmentation)
++        self.image_transform = transforms.Compose([
++            transforms.Resize((380, 380)),
+             transforms.ToTensor(),
+             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+         ])
+ 
+-        self._base_model = None
+-        logger.info(f"InferenceEngine initialized on {self.device}")
++        # Multilingual BERT tokenizer (supports EN/HI/TA/TE)
++        self.tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
++        self.max_text_len = 128
++
++        # Base model — lazy-loaded on first predict call
++        self._base_model: Optional[nn.Module] = None
++
++        logger.info(f"InferenceEngine initialised on {self.device}")
++
++    # ──────────────────────────────────────────────────────────────
++    # Internal helpers
++    # ──────────────────────────────────────────────────────────────
+ 
+     def _load_disease_names(self, path: str) -> dict:
+         try:
+@@ -59,104 +85,176 @@ class InferenceEngine:
+         except Exception:
+             return {}
+ 
+-    def load_model(self, district_id: Optional[int] = None):
++    def _load_base_model(self) -> nn.Module:
++        """Load CropDiseaseFusionModel from checkpoint (or random weights in demo mode)."""
++        from ml.models.fusion_model import CropDiseaseFusionModel
++
++        model = CropDiseaseFusionModel(
++            num_diseases=self.num_diseases,
++            num_districts=self.num_districts,
++            num_seasons=self.num_seasons,
++            num_crops=self.num_crops,
++        )
++
++        checkpoint_path = self.model_dir / "base" / "best_model.pth"
++        if checkpoint_path.exists():
++            logger.info(f"Loading checkpoint: {checkpoint_path}")
++            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
++            state_dict = checkpoint.get("model_state_dict", checkpoint)
++            model.load_state_dict(state_dict, strict=False)
++            logger.info("Checkpoint loaded ✓")
++        else:
++            logger.warning(
++                f"No checkpoint at {checkpoint_path}. "
++                "Running in demo mode with random weights."
++            )
++
++        model.to(self.device).eval()
++        return model
++
++    def load_model(self, district_id: Optional[int] = None) -> nn.Module:
+         """
+-        Loads the ResNet50 base model and injects the LoRA adapters from lora_adapters directory.
++        Return the model for inference.
++
++        If a per-district LoRA adapter exists at
++        models/lora_adapters/<district_id>/ it is injected on top of the
++        base model; otherwise the base model is returned as-is.
+         """
++        # Lazy-load base model
+         if self._base_model is None:
+-            logger.info("Loading base ResNet50 model...")
+-            model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+-            
+-            # Replace classifier to match our 3 classes
+-            model.fc = nn.Linear(model.fc.in_features, len(self.CLASSES))
+-            
+-            lora_path = self.model_dir / "lora_adapters"
+-            if lora_path.exists():
+-                logger.info(f"Injecting LoRA adapters from {lora_path}")
+-                model = PeftModel.from_pretrained(model, str(lora_path))
+-            else:
+-                logger.warning(f"LoRA adapters not found at {lora_path}! Running untrained head.")
+-            
+-            model.to(self.device)
+-            model.eval()
+-            self._base_model = model
++            self._base_model = self._load_base_model()
+ 
+-        return self._base_model
++        # Inject per-district LoRA adapter if available
++        if district_id is not None:
++            adapter_dir = self.model_dir / "lora_adapters" / str(district_id)
++            if adapter_dir.exists():
++                try:
++                    from peft import PeftModel
++                    logger.info(f"Injecting LoRA adapter for district {district_id}")
++                    return PeftModel.from_pretrained(self._base_model, str(adapter_dir))
++                except Exception as e:
++                    logger.warning(f"LoRA adapter load failed ({e}), using base model")
+ 
+-    def preprocess_image(self, image_path: str) -> torch.Tensor:
+-        image = Image.open(image_path).convert("RGB")
+-        tensor = self.transform(image)
+-        return tensor.unsqueeze(0)
++        return self._base_model
+ 
+-    def preprocess_image_from_bytes(self, image_bytes: bytes) -> torch.Tensor:
+-        import io
++    def _preprocess_image(self, image_bytes: bytes) -> torch.Tensor:
++        """Decode image bytes → normalised (1, 3, 380, 380) tensor."""
+         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+-        tensor = self.transform(image)
+-        return tensor.unsqueeze(0)
+-
+-    def predict(self, image_path: str, symptom_text: str,
+-                district_id: int = 0, season_id: int = 0,
+-                crop_id: int = 0, top_k: int = 3) -> dict:
+-        
+-        with open(image_path, 'rb') as f:
+-            image_bytes = f.read()
+-        return self.predict_from_bytes(image_bytes, symptom_text, district_id, season_id, crop_id, top_k)
++        return self.image_transform(image).unsqueeze(0)
++
++    def _tokenize_text(self, symptom_text: str) -> tuple[torch.Tensor, torch.Tensor]:
++        """Tokenise symptom text with mBERT tokeniser."""
++        text = symptom_text.strip() or "no symptoms described"
++        enc = self.tokenizer(
++            text,
++            max_length=self.max_text_len,
++            padding="max_length",
++            truncation=True,
++            return_tensors="pt",
++        )
++        return enc["input_ids"], enc["attention_mask"]
++
++    # ──────────────────────────────────────────────────────────────
++    # Public prediction API
++    # ──────────────────────────────────────────────────────────────
+ 
+-    def predict_from_bytes(self, image_bytes: bytes, symptom_text: str,
+-                           district_id: int = 0, season_id: int = 0,
+-                           crop_id: int = 0, top_k: int = 3) -> dict:
+-        
++    def predict_from_bytes(
++        self,
++        image_bytes: bytes,
++        symptom_text: str = "",
++        district_id: int = 0,
++        season_id: int = 0,
++        crop_id: int = 0,
++        top_k: int = 3,
++    ) -> dict:
++        """
++        Run full multi-modal inference.
++
++        Args:
++            image_bytes:  Raw bytes of the leaf photo (JPG/PNG).
++            symptom_text: Symptom description — any supported language
++                          (English, Hindi, Tamil, Telugu).
++            district_id:  District index (0 – num_districts-1).
++            season_id:    0 = kharif, 1 = rabi, 2 = zaid.
++            crop_id:      Crop variety index (0 – num_crops-1).
++            top_k:        Number of ranked predictions to return.
++
++        Returns:
++            dict with: predictions, primary_diagnosis, severity, model_info
++        """
+         model = self.load_model(district_id)
+-        image_tensor = self.preprocess_image_from_bytes(image_bytes).to(self.device)
++
++        image_t = self._preprocess_image(image_bytes).to(self.device)
++        input_ids, attn_mask = self._tokenize_text(symptom_text)
++        input_ids = input_ids.to(self.device)
++        attn_mask = attn_mask.to(self.device)
++
++        district_t = torch.tensor([district_id], dtype=torch.long, device=self.device)
++        season_t   = torch.tensor([season_id],   dtype=torch.long, device=self.device)
++        crop_t     = torch.tensor([crop_id],     dtype=torch.long, device=self.device)
+ 
+         with torch.no_grad():
+-            outputs = model(image_tensor)
+-            # PEFT models sometimes return a tuple, we just want logits
+-            if isinstance(outputs, tuple):
+-                logits = outputs[0]
+-            elif hasattr(outputs, 'logits'):
+-                logits = outputs.logits
+-            else:
+-                logits = outputs
+-                
+-            probs = torch.softmax(logits, dim=1)
+-            
+-            # Get top k (limited by our 3 classes)
+-            k = min(top_k, len(self.CLASSES))
+-            topk_probs, topk_indices = torch.topk(probs, k, dim=1)
++            disease_logits, severity_logits = model(
++                image_t, input_ids, attn_mask, district_t, season_t, crop_t
++            )
++            disease_probs  = torch.softmax(disease_logits,  dim=1)
++            severity_probs = torch.softmax(severity_logits, dim=1)
++
++        # Top-k disease predictions
++        k = min(top_k, self.num_diseases)
++        topk_probs, topk_idx = torch.topk(disease_probs, k, dim=1)
+ 
+         predictions = []
+         for i in range(k):
+-            idx = topk_indices[0][i].item()
+-            class_name = self.CLASSES[idx]
+-            
++            idx = topk_idx[0][i].item()
++            info = self.disease_names.get(idx, {})
+             predictions.append({
+                 "rank": i + 1,
+-                "disease_id": idx, # use our internal ID
+-                "disease_name": class_name.replace("_", " "),
+-                "scientific_name": class_name,
++                "disease_id": idx,
++                "disease_name": info.get("name", f"Disease_{idx}"),
++                "scientific_name": info.get("scientific_name", ""),
+                 "confidence": round(topk_probs[0][i].item() * 100, 2),
+             })
+ 
+-        # Mock severity since our model doesn't predict it
+-        severity_idx = 1 # Moderate
+-        severity_probs = [10.0, 80.0, 10.0]
++        # Severity
++        sev_idx = severity_probs.argmax(dim=1).item()
++        sev_dist = {
++            SEVERITY_LABELS[i]: round(severity_probs[0][i].item() * 100, 2)
++            for i in range(3)
++        }
++
++        # Detect whether a per-district adapter was used
++        adapter_path = self.model_dir / "lora_adapters" / str(district_id)
++        model_type = "fusion_district_lora" if adapter_path.exists() else "fusion_base"
+ 
+         return {
+             "predictions": predictions,
+             "primary_diagnosis": predictions[0],
+             "severity": {
+-                "level": self.SEVERITY_LABELS[severity_idx],
+-                "level_id": severity_idx,
+-                "confidence": 80.0,
+-                "distribution": {
+-                    "Mild": severity_probs[0],
+-                    "Moderate": severity_probs[1],
+-                    "Severe": severity_probs[2]
+-                },
++                "level": SEVERITY_LABELS[sev_idx],
++                "level_id": sev_idx,
++                "confidence": round(severity_probs[0][sev_idx].item() * 100, 2),
++                "distribution": sev_dist,
+             },
+             "model_info": {
+-                "type": "lora_resnet50",
++                "type": model_type,
+                 "device": str(self.device),
++                "district_id": district_id,
+             },
+         }
++
++    def predict(
++        self,
++        image_path: str,
++        symptom_text: str = "",
++        district_id: int = 0,
++        season_id: int = 0,
++        crop_id: int = 0,
++        top_k: int = 3,
++    ) -> dict:
++        """Convenience wrapper that reads image from a file path."""
++        with open(image_path, "rb") as f:
++            image_bytes = f.read()
++        return self.predict_from_bytes(
++            image_bytes, symptom_text, district_id, season_id, crop_id, top_k
++        )
+diff --git a/ml/requirements.txt b/ml/requirements.txt
+new file mode 100644
+index 0000000..ea4f4fa
+--- /dev/null
++++ b/ml/requirements.txt
+@@ -0,0 +1,30 @@
++# ──────────────────────────────────────────────
++# KisanAI — ML / Training Requirements
++#
++# Install separately from backend/requirements.txt
++# (these are large GPU packages):
++#
++#   pip install -r ml/requirements.txt
++#
++# For GPU:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
++# For CPU:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
++# ──────────────────────────────────────────────
++
++# ── Core deep learning ──────────────────────────
++torch>=2.2.0
++torchvision>=0.17.0
++
++# ── HuggingFace (mBERT tokeniser + PEFT LoRA) ──
++transformers>=4.40.0
++peft>=0.10.0
++sentencepiece>=0.1.99      # required by mBERT tokeniser
++
++# ── Image handling ──────────────────────────────
++Pillow>=10.0.0
++
++# ── Numerical / metrics ─────────────────────────
++numpy>=1.24.0
++scikit-learn>=1.3.0
++
++# ── Optional: accelerate for AMP / distributed ──
++accelerate>=0.28.0
+diff --git a/models/lora_adapters/adapter_config.json b/models/lora_adapters/adapter_config.json
+index 1c4c29a..7f21b1e 100644
+--- a/models/lora_adapters/adapter_config.json
++++ b/models/lora_adapters/adapter_config.json
+@@ -3,10 +3,10 @@
+   "alpha_pattern": {},
+   "arrow_config": null,
+   "auto_mapping": {
+-    "base_model_class": "ResNet",
+-    "parent_library": "torchvision.models.resnet"
++    "base_model_class": "CropDiseaseFusionModel",
++    "parent_library": "ml.models.fusion_model"
+   },
+-  "base_model_name_or_path": null,
++  "base_model_name_or_path": "models/base/best_model.pth",
+   "bias": "none",
+   "corda_config": null,
+   "ensure_weight_tying": false,
+@@ -26,7 +26,8 @@
+   "megatron_config": null,
+   "megatron_core": "megatron.core",
+   "modules_to_save": [
+-    "fc"
++    "disease_head",
++    "severity_head"
+   ],
+   "peft_type": "LORA",
+   "peft_version": "0.19.1",
+@@ -34,29 +35,17 @@
+   "r": 8,
+   "rank_pattern": {},
+   "revision": null,
++  "task_type": "FEATURE_EXTRACTION",
+   "target_modules": [
+-    "layer4.2.conv2",
+-    "layer1.0.conv2",
+-    "layer4.0.conv2",
+-    "layer3.1.conv2",
+-    "layer2.3.conv2",
+-    "layer1.2.conv2",
+-    "layer3.3.conv2",
+-    "layer2.1.conv2",
+-    "layer2.0.conv2",
+-    "layer2.2.conv2",
+-    "layer3.4.conv2",
+-    "layer1.1.conv2",
+-    "layer3.2.conv2",
+-    "layer3.0.conv2",
+-    "layer4.1.conv2",
+-    "layer3.5.conv2"
++    "fusion.0",
++    "fusion.4",
++    "text_branch.projection.0",
++    "text_branch.projection.3"
+   ],
+   "target_parameters": null,
+-  "task_type": null,
+   "trainable_token_indices": null,
+   "use_bdlora": null,
+   "use_dora": false,
+   "use_qalora": false,
+   "use_rslora": false
+-}
+\ No newline at end of file
++}
+diff --git a/test_inference.py b/test_inference.py
+index 107e23a..9ed2339 100644
+--- a/test_inference.py
++++ b/test_inference.py
+@@ -1,23 +1,61 @@
++"""
++KisanAI — Quick inference smoke-test.
++
++Run from the project root:
++    python test_inference.py
++
++Expects:
++    models/base/best_model.pth   (or runs in demo / random-weight mode)
++    data/knowledge_base/diseases.json
++
++The engine uses all three modalities:
++  • image_bytes   — leaf photo (green dummy image here)
++  • symptom_text  — vernacular description (Hindi example)
++  • district_id, season_id, crop_id — contextual metadata
++"""
++
+ import sys
+-import os
++import json
+ from pathlib import Path
+ 
+ # Add project root to path
+ sys.path.insert(0, str(Path(__file__).parent))
+ 
++from PIL import Image
++import io
++
+ from ml.inference import InferenceEngine
+ 
+-engine = InferenceEngine(model_dir="models")
++# ── Initialise engine ──────────────────────────────────────────
++engine = InferenceEngine(
++    model_dir="models",
++    disease_names_file="data/knowledge_base/diseases.json",
++)
+ 
+-# Create a dummy image
+-from PIL import Image
+-img = Image.new('RGB', (224, 224), color=(0, 255, 0))
+-img.save("test_leaf.jpg")
++# ── Create a dummy 380×380 green leaf image ────────────────────
++buf = io.BytesIO()
++Image.new("RGB", (380, 380), color=(34, 139, 34)).save(buf, format="JPEG")
++img_bytes = buf.getvalue()
+ 
+-with open("test_leaf.jpg", "rb") as f:
+-    img_bytes = f.read()
++# Also save to disk for visual inspection
++with open("test_leaf.jpg", "wb") as f:
++    f.write(img_bytes)
+ 
+-result = engine.predict_from_bytes(img_bytes, symptom_text="Yellow leaves")
+-print("Prediction Result:")
+-import json
++# ── Run full multi-modal prediction ───────────────────────────
++result = engine.predict_from_bytes(
++    image_bytes=img_bytes,
++    symptom_text="Patti pe bhure aur peele daag dikh rahe hain",  # Hindi: "Brown and yellow spots visible on leaves"
++    district_id=5,    # e.g. Vaishali, Bihar
++    season_id=0,      # 0 = kharif
++    crop_id=3,        # e.g. Rice
++    top_k=3,
++)
++
++print("\n=== KisanAI Prediction Result ===")
+ print(json.dumps(result, indent=2))
++print("\nModel type :", result["model_info"]["type"])
++print("Device     :", result["model_info"]["device"])
++print("Top disease:", result["primary_diagnosis"]["disease_name"],
++      f"({result['primary_diagnosis']['confidence']}%)")
++print("Severity   :", result["severity"]["level"],
++      f"({result['severity']['confidence']}%)")
+-- 
+2.43.0

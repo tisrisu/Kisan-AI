@@ -1,0 +1,75 @@
+# ── Secrets ─────────────────────────────────────────────────────
+.env
+*.env.local
+*.env.production
+
+# ── Python ──────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.cover
+
+# ── Virtual Environments ─────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Node / Next.js ───────────────────────────────────────────────
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+
+# ── ML model weights (large binary files) ────────────────────────
+# Commit adapter_config.json but NOT the heavy weight files
+models/base/*.pth
+models/base/*.pt
+models/lora_adapters/**/*.safetensors
+models/lora_adapters/**/*.bin
+# Exception: keep the district-specific adapter configs
+!models/lora_adapters/**/adapter_config.json
+
+# ── Databases ────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+backend/kisanai.db
+
+# ── Uploads (user data — never commit) ───────────────────────────
+data/uploads/*
+!data/uploads/.gitkeep
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS / IDE ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Docker ───────────────────────────────────────────────────────
+.docker/
+
+# ── Jupyter ──────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Test artefacts ───────────────────────────────────────────────
+test_leaf.jpg

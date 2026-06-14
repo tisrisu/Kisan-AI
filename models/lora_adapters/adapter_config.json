@@ -3,10 +3,10 @@
   "alpha_pattern": {},
   "arrow_config": null,
   "auto_mapping": {
-    "base_model_class": "ResNet",
-    "parent_library": "torchvision.models.resnet"
+    "base_model_class": "CropDiseaseFusionModel",
+    "parent_library": "ml.models.fusion_model"
   },
-  "base_model_name_or_path": null,
+  "base_model_name_or_path": "models/base/best_model.pth",
   "bias": "none",
   "corda_config": null,
   "ensure_weight_tying": false,
@@ -26,7 +26,8 @@
   "megatron_config": null,
   "megatron_core": "megatron.core",
   "modules_to_save": [
-    "fc"
+    "disease_head",
+    "severity_head"
   ],
   "peft_type": "LORA",
   "peft_version": "0.19.1",
@@ -34,26 +35,14 @@
   "r": 8,
   "rank_pattern": {},
   "revision": null,
+  "task_type": "FEATURE_EXTRACTION",
   "target_modules": [
-    "layer4.2.conv2",
-    "layer1.0.conv2",
-    "layer4.0.conv2",
-    "layer3.1.conv2",
-    "layer2.3.conv2",
-    "layer1.2.conv2",
-    "layer3.3.conv2",
-    "layer2.1.conv2",
-    "layer2.0.conv2",
-    "layer2.2.conv2",
-    "layer3.4.conv2",
-    "layer1.1.conv2",
-    "layer3.2.conv2",
-    "layer3.0.conv2",
-    "layer4.1.conv2",
-    "layer3.5.conv2"
+    "fusion.0",
+    "fusion.4",
+    "text_branch.projection.0",
+    "text_branch.projection.3"
   ],
   "target_parameters": null,
-  "task_type": null,
   "trainable_token_indices": null,
   "use_bdlora": null,
   "use_dora": false,
