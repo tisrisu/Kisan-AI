@@ -12,10 +12,14 @@ when available, falling back to the base model otherwise.
 """
 
 import io
+import os
 import json
 import logging
 from pathlib import Path
 from typing import Optional
+
+# Fix for OpenMP on Windows
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import torch
 import torch.nn as nn
