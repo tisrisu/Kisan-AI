@@ -1,0 +1,216 @@
+/**
+ * KisanAI — Internationalization (i18n)
+ * Supports: English, Hindi, Telugu, Tamil
+ */
+
+const translations = {
+  en: {
+    // Navbar
+    nav_home: "Home",
+    nav_diagnose: "Diagnose",
+    nav_history: "History",
+    nav_dashboard: "Dashboard",
+    nav_about: "About",
+
+    // Hero
+    hero_label: "AI-POWERED CROP CARE",
+    hero_title_1: "An AI That Learns",
+    hero_title_2: "Your District's Fields",
+    hero_desc: "Farmers photograph plants → AI diagnoses disease + severity → Recommends medications — and gets smarter for each region over time.",
+    hero_cta: "Start Diagnosis",
+    hero_cta_2: "How It Works",
+    stat_diagnoses: "Diagnoses Served",
+    stat_districts: "Districts Active",
+    stat_accuracy: "Accuracy",
+    stat_languages: "Languages",
+
+    // Flow
+    flow_label: "HOW IT WORKS",
+    flow_title: "Four Steps to Healthy Crops",
+    upload: "Upload",
+    upload_desc: "Leaf photo + crop variety, district, season, symptoms in local language",
+    diagnose: "Diagnose",
+    diagnose_desc: "Multi-modal AI classifies disease + severity using image & text together",
+    treat: "Treat",
+    treat_desc: "Region-specific medications, dosage, precautions & prevention tips",
+    adapt: "Adapt",
+    adapt_desc: "Model fine-tunes per district as farmers contribute verified diagnoses",
+
+    // Diagnose Page
+    diag_label: "CROP DIAGNOSIS",
+    diag_title: "Upload a Leaf Photo",
+    diag_subtitle: "Our AI will analyze the image, your symptoms, and regional context to identify the disease.",
+    upload_photo: "Upload Leaf Photo",
+    upload_drag: "Drag & drop or click to upload",
+    upload_formats: "JPG, PNG — Max 10MB",
+    crop_variety: "Crop Variety",
+    crop_placeholder: "Select crop variety...",
+    district: "District",
+    district_placeholder: "Select your district...",
+    season: "Season",
+    season_kharif: "Kharif",
+    season_rabi: "Rabi",
+    season_zaid: "Zaid",
+    symptoms: "Symptom Description",
+    symptoms_placeholder: "Describe what you see on the leaves... (any language)",
+    voice_input: "Voice Input",
+    submit_diagnosis: "Diagnose Now",
+    analyzing: "Analyzing your leaf...",
+
+    // Results
+    result_label: "DIAGNOSIS OUTPUT",
+    result_title: "Diagnosis Results",
+    disease_identified: "DISEASE IDENTIFIED",
+    confidence: "Confidence",
+    severity: "SEVERITY",
+    recommended_meds: "RECOMMENDED MEDICATIONS",
+    precautions: "PRECAUTIONS",
+    prevention: "PREVENTION FOR NEXT SEASON",
+    feedback_title: "Was this diagnosis correct?",
+    feedback_desc: "Your feedback helps improve the AI model for your district.",
+    feedback_yes: "Yes, Correct",
+    feedback_no: "No, Incorrect",
+    view_more: "View Full Disease Details",
+
+    // History
+    history_label: "YOUR HISTORY",
+    history_title: "Past Diagnoses",
+    no_history: "No diagnoses yet. Upload your first leaf photo!",
+
+    // Dashboard
+    dash_label: "DISTRICT DASHBOARD",
+    dash_title: "Platform Statistics",
+    total_diagnoses: "Total Diagnoses",
+    active_districts: "Active Districts",
+    model_accuracy: "Model Accuracy",
+    verified_feedback: "Verified Feedback",
+
+    // Footer
+    footer_desc: "AI-powered crop disease diagnosis for Indian farmers. Multi-modal fusion with per-district fine-tuning.",
+    footer_platform: "Platform",
+    footer_resources: "Resources",
+    footer_contact: "Contact",
+    footer_copyright: "© 2024 KisanAI. Built for India's farmers.",
+  },
+
+  hi: {
+    nav_home: "होम",
+    nav_diagnose: "निदान",
+    nav_history: "इतिहास",
+    nav_dashboard: "डैशबोर्ड",
+    nav_about: "जानकारी",
+    hero_label: "एआई-संचालित फसल देखभाल",
+    hero_title_1: "एक AI जो सीखता है",
+    hero_title_2: "आपके जिले के खेत",
+    hero_desc: "किसान पौधों की तस्वीर लें → AI रोग + गंभीरता का निदान करे → दवाइयां सुझाए — और हर क्षेत्र के लिए स्मार्ट होता जाए।",
+    hero_cta: "निदान शुरू करें",
+    hero_cta_2: "कैसे काम करता है",
+    upload: "अपलोड",
+    upload_desc: "पत्ती की फोटो + फसल किस्म, जिला, मौसम, लक्षण स्थानीय भाषा में",
+    diagnose: "निदान",
+    diagnose_desc: "मल्टी-मोडल AI चित्र और टेक्स्ट दोनों से रोग + गंभीरता का वर्गीकरण करता है",
+    treat: "उपचार",
+    treat_desc: "क्षेत्र-विशिष्ट दवाइयां, खुराक, सावधानियां और रोकथाम के उपाय",
+    adapt: "अनुकूलन",
+    adapt_desc: "जैसे-जैसे किसान सत्यापित निदान देते हैं, मॉडल प्रति जिले बेहतर होता जाता है",
+    crop_variety: "फसल किस्म",
+    district: "जिला",
+    season: "मौसम",
+    season_kharif: "खरीफ",
+    season_rabi: "रबी",
+    season_zaid: "जायद",
+    symptoms: "लक्षण विवरण",
+    symptoms_placeholder: "पत्तियों पर क्या दिख रहा है बताएं...",
+    submit_diagnosis: "निदान करें",
+    disease_identified: "रोग पहचाना गया",
+    confidence: "विश्वसनीयता",
+    severity: "गंभीरता",
+    recommended_meds: "अनुशंसित दवाइयां",
+    precautions: "सावधानियां",
+    feedback_title: "क्या यह निदान सही था?",
+    feedback_yes: "हां, सही",
+    feedback_no: "नहीं, गलत",
+    footer_copyright: "© 2024 KisanAI। भारत के किसानों के लिए बनाया गया।",
+  },
+
+  te: {
+    nav_home: "హోమ్",
+    nav_diagnose: "రోగ నిర్ధారణ",
+    nav_history: "చరిత్ర",
+    nav_dashboard: "డ్యాష్‌బోర్డ్",
+    nav_about: "గురించి",
+    hero_label: "AI-ఆధారిత పంట సంరక్షణ",
+    hero_title_1: "AI నేర్చుకుంటుంది",
+    hero_title_2: "మీ జిల్లా పొలాలను",
+    hero_desc: "రైతులు మొక్కల ఫోటో తీయండి → AI వ్యాధి + తీవ్రతను నిర్ధారిస్తుంది → మందులు సూచిస్తుంది",
+    hero_cta: "రోగ నిర్ధారణ ప్రారంభించండి",
+    upload: "అప్‌లోడ్",
+    diagnose: "నిర్ధారణ",
+    treat: "చికిత్స",
+    adapt: "అనుసరణ",
+    crop_variety: "పంట రకం",
+    district: "జిల్లా",
+    season: "సీజన్",
+    season_kharif: "ఖరీఫ్",
+    season_rabi: "రబీ",
+    season_zaid: "జైద్",
+    symptoms: "లక్షణాల వివరణ",
+    submit_diagnosis: "నిర్ధారణ చేయండి",
+    disease_identified: "వ్యాధి గుర్తించబడింది",
+    confidence: "విశ్వసనీయత",
+    severity: "తీవ్రత",
+    recommended_meds: "సిఫార్సు చేసిన మందులు",
+    precautions: "జాగ్రత్తలు",
+    feedback_title: "ఈ నిర్ధారణ సరైనదా?",
+    feedback_yes: "అవును, సరైనది",
+    feedback_no: "కాదు, తప్పు",
+    footer_copyright: "© 2024 KisanAI. భారత రైతుల కోసం నిర్మించబడింది.",
+  },
+
+  ta: {
+    nav_home: "முகப்பு",
+    nav_diagnose: "நோய் கண்டறிதல்",
+    nav_history: "வரலாறு",
+    nav_dashboard: "டாஷ்போர்டு",
+    nav_about: "பற்றி",
+    hero_label: "AI-இயக்கப்படும் பயிர் பராமரிப்பு",
+    hero_title_1: "AI கற்றுக்கொள்கிறது",
+    hero_title_2: "உங்கள் மாவட்ட வயல்களை",
+    hero_desc: "விவசாயிகள் தாவர புகைப்படம் எடுங்கள் → AI நோய் + தீவிரத்தை கண்டறியும் → மருந்துகளை பரிந்துரைக்கும்",
+    hero_cta: "நோய் கண்டறிதலைத் தொடங்கு",
+    upload: "பதிவேற்றம்",
+    diagnose: "கண்டறிதல்",
+    treat: "சிகிச்சை",
+    adapt: "தகவமைப்பு",
+    crop_variety: "பயிர் வகை",
+    district: "மாவட்டம்",
+    season: "பருவம்",
+    season_kharif: "கரீஃப்",
+    season_rabi: "ரபி",
+    season_zaid: "ஜாய்த்",
+    symptoms: "அறிகுறிகள் விவரம்",
+    submit_diagnosis: "கண்டறியுங்கள்",
+    disease_identified: "நோய் கண்டறியப்பட்டது",
+    confidence: "நம்பகத்தன்மை",
+    severity: "தீவிரம்",
+    recommended_meds: "பரிந்துரைக்கப்பட்ட மருந்துகள்",
+    precautions: "முன்னெச்சரிக்கைகள்",
+    feedback_title: "இந்த கண்டறிதல் சரியானதா?",
+    feedback_yes: "ஆம், சரி",
+    feedback_no: "இல்லை, தவறு",
+    footer_copyright: "© 2024 KisanAI. இந்திய விவசாயிகளுக்காக உருவாக்கப்பட்டது.",
+  },
+};
+
+export function t(key, lang = "en") {
+  return translations[lang]?.[key] || translations.en[key] || key;
+}
+
+export function getLanguageName(code) {
+  const names = { en: "English", hi: "हिंदी", te: "తెలుగు", ta: "தமிழ்" };
+  return names[code] || code;
+}
+
+export const LANGUAGES = ["en", "hi", "te", "ta"];
+
+export default translations;
